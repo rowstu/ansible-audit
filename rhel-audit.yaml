@@ -1,0 +1,289 @@
+---
+- name: Generic RHEL server audit playbook
+  hosts: docker:misc:nginx # 3 groups
+  gather_facts: yes
+
+
+  tasks:
+  - name: Get OS version
+    shell: cat /etc/redhat-release
+    ignore_errors: true
+    register: os_version
+
+  - name: Gather last reboot
+    shell: last reboot | grep -m1 "" | awk '{ print $1, $6, $7, $8 }'
+    ignore_errors: true
+    register: rebooted
+
+  - name: CPU Info
+    shell: cat /proc/cpuinfo | grep processor | wc -l
+    ignore_errors: true
+    register: cpu
+
+  - name: Memory Info
+    shell: free
+    ignore_errors: true
+    register: free
+
+  - name: Check open ports
+    shell: netstat -tuln | grep -i LISTEN
+    ignore_errors: true
+    register: open_ports
+
+  - name: List cron jobs
+    shell: crontab -l
+    ignore_errors: true
+    register: cron_jobs
+
+  - name: List partitions
+    shell: lsblk | grep -v 'sr0\|fd0'
+    ignore_errors: true
+    register: partitions
+
+  - name: Disk space
+    shell:  df -H | grep -v tmpfs
+    ignore_errors: true
+    register: disks
+
+  - name: Check if Apache is installed
+    shell: rpm -q httpd
+    ignore_errors: true
+    register: apache_installed
+
+  - name: List Apache virtual hosts
+    shell: apachectl -S
+    ignore_errors: true
+    register: apache_vhosts
+    when: apache_installed
+
+  - name: Check if Nginx is installed
+    shell: rpm -q nginx
+    ignore_errors: true
+    register: nginx_installed
+
+  - name: Get Nginx Status
+    shell: systemctl status nginx
+    ignore_errors: true
+    register: nginx_status
+    when: nginx_installed
+
+  - name: Get Nginx Details
+    shell: nginx -T | grep -v '#'
+    ignore_errors: true
+    register: nginx_t
+    when: nginx_installed
+
+  - name: Check if MySQL is installed
+    shell: rpm -qa | grep 'mysql\|maria'
+    ignore_errors: true
+    register: mysql
+
+  - name: Check when Yum was last run
+    shell: yum history | head -n20
+    ignore_errors: true
+    register: yum_last_run
+
+  - name: List all users
+    shell: "cut -d: -f1 /etc/passwd"
+    ignore_errors: true
+    register: users
+
+  - name: Last logins
+    shell: last | grep -v boot | grep -v cfgmgr | head -n10
+    ignore_errors: true
+    register: logins
+
+  - name: Check for Sophos
+    shell: ps ax | grep [s]ophos
+    ignore_errors: true
+    register: sophos
+
+  - name: Check for Rapid7
+    shell: ps ax | grep [r]apid7
+    ignore_errors: true
+    register: rapid7
+
+  - name: Check for Flexara Agent
+    shell: ps ax | grep [n]dtask
+    ignore_errors: true
+    register: ndtask
+
+  - name: Check for iptables rules
+    shell: iptables -L -n
+    ignore_errors: true
+    register: iptables
+
+  - name: Get SELinux Status
+    shell: getenforce
+    ignore_errors: true
+    register: selinux
+
+  - name: Get all processes
+    shell: ps -aux
+    ignore_errors: true
+    register: ps
+
+  - name: Get startup programs
+    shell: systemctl list-unit-files --type=service --state=enabled --all
+    ignore_errors: true
+    register: systemctl
+
+  - name: Check for Docker
+    shell: rpm -qa | grep docker
+    ignore_errors: true
+    register: docker_installed
+
+  - name: Docker PS
+    shell: systemctl status docker
+    ignore_errors: true
+    register: docker
+    when: docker_installed
+
+  - name: Check for Squid
+    shell: rpm -qa | grep squid
+    ignore_errors: true
+    register: squid_installed
+
+  - name: Squid Stats
+    shell: squidclient -h 127.0.0.1 -p 3128 mgr:info
+    ignore_errors: true
+    register: squid
+    when: squid_installed
+
+  - name: Output audit results
+    ignore_errors: true
+    delegate_to: localhost
+    delegate_facts: True
+    copy:
+      content: |
+
+        Server report date: {{ ansible_date_time.date }}
+
+
+        Hostname:
+        {{ hostvars[inventory_hostname]['ansible_hostname'] }}
+
+        *******************************************************************************
+
+        OS Version:
+        {{ os_version.stdout }}
+
+        *******************************************************************************
+
+        IP Address:
+        {{ hostvars[inventory_hostname]['ansible_default_ipv4']['address'] }}
+
+        *******************************************************************************
+
+        Number of CPU Cores:
+        {{ cpu.stdout }}
+
+        Memory Usage:
+        {{ free.stdout }}
+
+        *******************************************************************************
+
+        The server was last rebooted:
+        {{ rebooted.stdout }}
+
+        *******************************************************************************
+
+        Last Logins:
+        {{ logins.stdout }}
+
+        *******************************************************************************
+
+        Listening Ports:
+        {{ open_ports.stdout }}
+
+        *******************************************************************************
+
+        Scheduled Tasks:
+        {{ cron_jobs.stdout }}
+
+        *******************************************************************************
+
+        Partitions:
+        {{ partitions.stdout }}
+
+        Disk Usage:
+        {{ disks.stdout }}
+
+        *******************************************************************************
+
+        Apache Config:
+        {{ apache_vhosts.stdout }}
+
+        *******************************************************************************
+
+        MySQL Packages:
+        {{ mysql.stdout }}
+
+        *******************************************************************************
+
+        Yum last run:
+        {{ yum_last_run.stdout }}
+
+        *******************************************************************************
+
+        All users:
+        {{ users.stdout }}
+
+        *******************************************************************************
+
+        Sophos Status:
+        {{ sophos.stdout}}
+
+        *******************************************************************************
+
+        Rapid7 Status:
+        {{ rapid7.stdout }}
+
+        *******************************************************************************
+
+        Flexera Agent Status:
+        {{ ndtask.stdout }}
+
+        *******************************************************************************
+
+        IPTables Rules:
+        {{ iptables.stdout }}
+
+        *******************************************************************************
+
+        SELinux Status:
+        {{ selinux.stdout }}
+
+        *******************************************************************************
+
+        Docker Status:
+        {{ docker.stdout }}
+
+        *******************************************************************************
+
+        Squid Status:
+        {{ squid.stdout }}
+
+        *******************************************************************************
+
+        Nginx Status:
+        {{ nginx_status.stdout }}
+
+        *******************************************************************************
+
+        Nginx Details:
+        {{ nginx_t.stdout }}
+
+        *******************************************************************************
+
+        All Running Processes:
+        {{ ps.stdout }}
+
+        *******************************************************************************
+
+        Startup Applications:
+        {{ systemctl.stdout }}
+
+        *******************************************************************************
+
+      dest: /ansible/reports/{{inventory_hostname}}-{{ ansible_date_time.date }}.txt
